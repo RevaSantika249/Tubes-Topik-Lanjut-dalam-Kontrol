@@ -1,0 +1,130 @@
+% Parameters
+initial_distance = 70; % Initial distance between the vehicles (meters)
+target_distance = 70; % Adjusted target distance to maintain (meters)
+desired_distance_min = 60; % Minimum desired distance (meters)
+desired_distance_max = 80; % Maximum desired distance (meters)
+vehicle1_speed = 20; % Speed of vehicle 1 (m/s)
+time_step = 0.1; % Time step for the simulation (seconds)
+end_time = 420; % Extended simulation end time (seconds)
+m = 1500; % Mass of the vehicle (kg)
+c_r = 0.1; % Air resistance coefficient
+k_p = 15; % Initial proportional gain for control
+k_d = 10; % Initial damping factor for control
+approach_rate = 0.8; % Gradual speed increase rate
+adaptive_rate = 0.02; % Reduced adaptive rate for gains
+error_threshold = 3; % Reduced threshold for significant error
+max_k_p = 20; % Lower maximum proportional gain
+max_k_d = 15; % Lower maximum damping factor
+
+% Initialize variables
+relative_distance = initial_distance; % Initial relative distance between the vehicles
+relative_speed = 0; % Initial relative speed between the vehicles
+time = 0; % Start time
+previous_error = 0; % Previous distance error
+
+% Initialize positions and velocities
+vehicle1_position = 0; % Initial position of vehicle 1
+vehicle2_position = -initial_distance; % Initial position of vehicle 2
+vehicle1_velocity = vehicle1_speed; % Initial velocity of vehicle 1
+vehicle2_velocity = vehicle1_speed; % Initial velocity of vehicle 2
+
+% Initialize arrays for plotting
+time_array = [];
+distance_array = [];
+speed_array = [];
+
+% Simulation loop
+figure;
+while time < end_time
+    % Speed changes for vehicle 1
+    if time >= 70 && time < 100
+        vehicle1_velocity = vehicle1_speed * (1 - 0.01 * (time - 70)); % Gradual reduction
+    elseif time >= 200 && time < 250
+        vehicle1_velocity = vehicle1_speed * (1 + 0.005 * (time - 200)); % Gradual increase
+    else
+        vehicle1_velocity = vehicle1_speed; % Full speed
+    end
+
+    % Calculate error
+    error = relative_distance - target_distance;
+
+    % Adaptive control adjustments
+    if abs(error) > error_threshold
+        k_p = min(k_p + adaptive_rate * error, max_k_p); % Adjust proportional gain with limit
+        k_d = min(k_d + adaptive_rate * (error - previous_error) / time_step, max_k_d); % Adjust damping factor with limit
+    end
+
+    % Control logic to maintain target distance
+    if relative_distance > desired_distance_max
+        % Gradual acceleration with limit
+        vehicle2_velocity = min(vehicle2_velocity + approach_rate * time_step, vehicle1_velocity + 1.5);
+    elseif relative_distance < desired_distance_min
+        % Controlled braking to avoid excessive deceleration
+        control_force = max(-800, -1500 - k_p * (desired_distance_min - relative_distance));
+        F_drag = c_r * vehicle2_velocity^2;
+        acceleration = (control_force - F_drag) / m;
+        vehicle2_velocity = max(0, vehicle2_velocity + acceleration * time_step);
+    else
+        % Proportional-Derivative control for stable adjustments
+        control_force = -k_p * (relative_distance - target_distance) - k_d * relative_speed;
+        F_drag = c_r * vehicle2_velocity^2;
+        acceleration = (control_force - F_drag) / m;
+        vehicle2_velocity = max(0, vehicle2_velocity + acceleration * time_step);
+    end
+
+    % Update positions
+    vehicle1_position = vehicle1_position + vehicle1_velocity * time_step;
+    vehicle2_position = vehicle2_position + vehicle2_velocity * time_step;
+
+    % Update relative distance and speed
+    relative_distance = abs(vehicle1_position - vehicle2_position);
+    relative_speed = vehicle2_velocity - vehicle1_velocity;
+
+    % Store data for plotting
+    time_array(end+1) = time;
+    distance_array(end+1) = relative_distance;
+    speed_array(end+1) = relative_speed;
+
+    % Update previous error
+    previous_error = error;
+
+    % Plot the vehicles
+    clf;
+    hold on;
+    % Draw vehicle 1 as a thin rectangle
+    rectangle('Position', [vehicle1_position - 10, 0.5, 20, 0.5], 'FaceColor', 'blue');
+    % Draw vehicle 2 as a thin rectangle, directly behind vehicle 1
+    rectangle('Position', [vehicle2_position - 10, 0.5, 20, 0.5], 'FaceColor', 'red');
+    plot([vehicle1_position, vehicle2_position], [0.75, 0.75], 'k--'); % Connection line
+    xlim([-initial_distance, vehicle1_position + 50]);
+    ylim([-1, 2]);
+    title(sprintf('Time: %.1f s | Distance: %.1f m | Rel. Speed: %.1f m/s', time, relative_distance, relative_speed));
+    xlabel('Position (m)');
+    ylabel('Vehicle Lane');
+    grid on;
+    pause(0.01);
+
+    % Update time
+    time = time + time_step;
+end
+
+% Plot distance and speed over time
+figure;
+subplot(2, 1, 1);
+plot(time_array, distance_array, 'b', 'LineWidth', 1.5);
+hold on;
+plot([time_array(1), time_array(end)], [target_distance, target_distance], 'g--');
+plot([time_array(1), time_array(end)], [desired_distance_min, desired_distance_min], 'r--');
+plot([time_array(1), time_array(end)], [desired_distance_max, desired_distance_max], 'r--');
+title('Relative Distance Over Time');
+xlabel('Time (s)');
+ylabel('Distance (m)');
+grid on;
+legend('Distance', 'Target Distance', 'Desired Min', 'Desired Max');
+
+subplot(2, 1, 2);
+plot(time_array, speed_array, 'g', 'LineWidth', 1.5);
+title('Relative Speed Over Time');
+xlabel('Time (s)');
+ylabel('Speed (m/s)');
+grid on;
